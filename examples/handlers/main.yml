@@ -1,0 +1,6 @@
+---
+- name: Restart application
+  ansible.builtin.service:
+    name: "{{ app_name }}"
+    state: restarted
+  listen: application configuration changed

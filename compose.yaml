@@ -1,0 +1,17 @@
+services:
+  playbook-web:
+    image: ghcr.io/zcq100/playbook-web:${IMAGE_TAG:-v0.1.0}
+    build:
+      context: .
+      args:
+        APP_VERSION: 0.1.0
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - playbook-data:/data
+      - ${ANSIBLE_REPOSITORY:-./examples}:/workspace/repository
+    init: true
+    restart: unless-stopped
+
+volumes:
+  playbook-data:

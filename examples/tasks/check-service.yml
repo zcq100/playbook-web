@@ -1,0 +1,8 @@
+---
+- name: Check application service
+  ansible.builtin.service_facts:
+
+- name: Display service status
+  ansible.builtin.debug:
+    var: ansible_facts.services
+  when: ansible_facts.services is defined

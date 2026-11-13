@@ -1,0 +1,5 @@
+---
+# Shared configuration
+ansible_user: deploy
+app_name: my-application
+http_port: 80

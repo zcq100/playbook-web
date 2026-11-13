@@ -1,0 +1,14 @@
+.settings.json
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+*.bundle
+.workspace-*
+.playbook-edit-*
+.agents/
+.codex/
+.aws/

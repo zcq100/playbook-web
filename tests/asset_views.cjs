@@ -1,0 +1,122 @@
+// Exercise asset rendering without a browser or network.
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const elements=new Map();
+function element(key){if(!elements.has(key))elements.set(key,{value:'',textContent:'',innerHTML:'',hidden:false,dataset:{},addEventListener(){},setAttribute(){},focus(){},showModal(){this.open=true},close(){this.open=false}});return elements.get(key)}
+const context=vm.createContext({document:{querySelector:element,querySelectorAll:()=>[],addEventListener(){}},window:{addEventListener(){}},fetch:async()=>({ok:true,json:async()=>({directory:'/repo',files:[],token:'test'})}),setTimeout:()=>0,clearTimeout(){},console});
+vm.runInContext(fs.readFileSync('static/app.js','utf8').replace('start();\n',''),context);
+function view(category,path,data,files=[]){context.input={category,path,data,files};vm.runInContext(`selected={category:input.category,path:input.path};asset={data:input.data,content:''};state.files=input.files;renderAsset()`,context);return element('#assetOverview').innerHTML}
+assert.match(view('playbooks','site.yml',[{name:'Deploy',hosts:'web',tasks:[{name:'Install', 'ansible.builtin.package':{name:'nginx'}}]}]),/Deploy/);
+assert.match(element('#assetOverview').innerHTML,/ansible.builtin.package/);
+assert.match(view('variables','group_vars/all.yml',{port:80,nested:{enabled:true}}),/number/);
+assert.match(view('inventory','inventory/hosts.ini',{sections:[{name:'web',lines:[{line:2,text:'web01'}]}]}),/web01/);
+assert.match(view('roles','roles/nginx/tasks/main.yml',[{name:'Start service',service:{name:'nginx'}}],[{path:'roles/nginx/tasks/main.yml'},{path:'roles/nginx/defaults/main.yml'}]),/默认变量/);
+assert.match(view('variables','vars/main.yml',{html:'<script>alert(1)</script>'}),/&lt;script&gt;/);
+vm.runInContext(String.raw`asset={content:'port: 80\n'};$('#sourceEditor').value='port: 90\n';renderDiff()`,context);
+assert.match(element('#diffOutput').innerHTML,/- port: 80/);
+assert.match(element('#diffOutput').innerHTML,/\+ port: 90/);
+console.log('Asset views, escaping and edit diff passed');
+function collection(kind,files){context.collectionInput={kind,files};vm.runInContext("category=collectionInput.kind;state.files=collectionInput.files;$('#search').value='';renderFiles()",context);assert.equal(element('#fileTable').hidden,true);return element('#assetCollection').innerHTML}
+assert.match(collection('playbooks',[{name:'site.yml',path:'site.yml',category:'playbooks',summary:{plays:[{name:'Deploy app',hosts:'web',roles:['nginx'],tasks:2}]}}]),/play-pipeline/);
+assert.match(element('#assetCollection').innerHTML,/Deploy app/);
+assert.match(collection('roles',[{name:'main.yml',path:'roles/nginx/tasks/main.yml',category:'roles',summary:{tasks:2}},{name:'main.yml',path:'roles/nginx/defaults/main.yml',category:'roles',summary:{keys:['port']}}]),/role-components/);
+assert.equal(element('#fileCount').textContent,'1 个角色');
+assert.match(element('#assetCollection').innerHTML,/defaults\/main.yml/);
+assert.match(collection('variables',[{name:'all.yml',path:'group_vars/all.yml',category:'variables',summary:{keys:['http_port']}}]),/主机组变量/);
+assert.match(element('#assetCollection').innerHTML,/http_port/);
+assert.match(collection('inventory',[{name:'hosts.ini',path:'inventory/hosts.ini',category:'inventory',summary:{groups:[{name:'web',kind:'hosts',entries:['web01']}]}}]),/inventory-topology/);
+assert.match(element('#assetCollection').innerHTML,/web01/);
+assert.match(collection('config',[{name:'nginx.j2',path:'nginx.j2',category:'config',summary:{expressions:['http_port'],sections:[],lines:10}}]),/Jinja 模板/);
+assert.match(element('#assetCollection').innerHTML,/http_port/);
+vm.runInContext("$('#search').value='not-found';renderFiles()",context);
+assert.match(element('#assetCollection').innerHTML,/没有匹配的资产/);
+console.log('Type-specific collections, role aggregation, summaries and search passed');
+assert.match(collection('tasks',[{name:'main.yml',path:'roles/web/tasks/main.yml',category:'roles',assetType:'tasks',role:'roles/web',summary:{tasks:1,items:[{name:'Ping',modules:['ansible.builtin.ping']}]}}]),/Ping/);
+assert.match(element('#assetCollection').innerHTML,/Role \/ web/);
+assert.equal(vm.runInContext("assetCount('roles')",context),1);
+assert.equal(vm.runInContext("assetCount('tasks')",context),1);
+assert.match(collection('handlers',[{name:'main.yml',path:'handlers/main.yml',category:'handlers',summary:{tasks:1,items:[{name:'Restart nginx',modules:['service'],listen:'reload nginx'}]}}]),/监听 · reload nginx/);
+assert.match(view('handlers','handlers/main.yml',[{name:'Restart',service:{name:'nginx'},listen:'reload'}]),/listen: reload/);
+assert.match(collection('templates',[{name:'nginx.conf',path:'templates/nginx.conf',category:'templates',summary:{lines:2,expressions:['port']}}]),/template-expressions/);
+assert.match(collection('files',[{name:'logo.png',path:'files/logo.png',category:'files',size:128,summary:{editable:false}}]),/文件信息/);
+vm.runInContext("selected={name:'logo.png',path:'files/logo.png',category:'files',size:128};asset={editable:false,previewReason:'二进制文件，仅展示文件信息',content:''};renderAsset();setMode('edit')",context);
+assert.equal(vm.runInContext('mode',context),'overview');
+assert.match(element('#assetOverview').innerHTML,/二进制文件/);
+assert.match(collection('dependencies',[{name:'requirements.yml',path:'requirements.yml',category:'dependencies',summary:{dependencies:[{kind:'collection',name:'ansible.posix',source:'Galaxy',version:'>=1.5'}]}}]),/ansible.posix/);
+assert.match(element('#assetCollection').innerHTML,/&gt;=1.5/);
+assert.match(view('dependencies','requirements.yml',{collections:[{name:'ansible.posix',version:'>=1.5'}]}),/不代表本机已安装/);
+console.log('Tasks, handlers, templates, static files, dependency views and dual role membership passed');
+const flowFixture=[{name:'Deploy',hosts:'web',gather_facts:false,
+ pre_tasks:[{name:'Validate','ansible.builtin.assert':{that:'ready'}}],
+ roles:['nginx'],tasks:[{name:'Configure',template:{src:'app.j2'},when:'enabled',loop:['web01'],notify:'Restart'},
+ {name:'Recoverable operation',block:[{name:'Try',command:'true'}],rescue:[{name:'Recover',debug:{msg:'failed'}}],always:[{name:'Cleanup',debug:{msg:'cleanup'}}]},
+ {name:'Load tasks',include_tasks:'deploy.yml'},{meta:'flush_handlers'}],
+ post_tasks:[{name:'Verify',ping:{}}],handlers:[{name:'Restart',listen:'restart service',service:{name:'nginx'}}]},
+ {'ansible.builtin.import_playbook':'other.yml'}];
+context.flowFixture=flowFixture;
+vm.runInContext("selected={name:'site.yml',path:'site.yml',category:'playbooks'};asset={data:flowFixture,content:'saved',editable:true};$('#sourceEditor').value='saved';flowSelected=-1;setMode('flow')",context);
+let flowHtml=element('#flowPane').innerHTML;
+assert.equal(element('#flowTab').hidden,false);
+assert.equal(element('#flowPane').hidden,false);
+assert.equal(element('#assetOverview').hidden,true);
+assert.ok(flowHtml.indexOf('Validate')<flowHtml.indexOf('引用角色'));
+assert.ok(flowHtml.indexOf('引用角色')<flowHtml.indexOf('Configure'));
+assert.ok(flowHtml.indexOf('Configure')<flowHtml.indexOf('Verify'));
+assert.match(flowHtml,/rescue · 主体失败时尝试/);
+assert.match(flowHtml,/always · 正常或救援流程之后/);
+assert.match(flowHtml,/条件 · enabled/);
+assert.match(flowHtml,/循环执行/);
+assert.match(flowHtml,/通知 · Restart/);
+assert.match(flowHtml,/other.yml/);
+assert.match(flowHtml,/meta: flush_handlers/);
+assert.match(flowHtml,/仅处理已收到通知的 Handler/);
+assert.equal(vm.runInContext("flowNodes.filter(n=>n.kind==='facts').length",context),0);
+vm.runInContext("showFlowDetails(flowNodes.findIndex(n=>n.title==='Configure'))",context);
+assert.match(element('#flowDetails').innerHTML,/app.j2/);
+vm.runInContext("$('#sourceEditor').value='unsaved';renderPlaybookFlow()",context);
+assert.match(element('#flowPane').innerHTML,/上次保存的内容/);
+vm.runInContext("selected={path:'vars.yml',category:'variables'};asset={data:{port:80},content:'',editable:true};setMode('flow')",context);
+assert.equal(element('#flowTab').hidden,true);
+assert.equal(vm.runInContext('mode',context),'overview');
+vm.runInContext("selected={path:'site.yml',category:'playbooks'};asset={data:[{hosts:'all',tasks:[{name:'<script>bad</script>',debug:{msg:'hello'}}]}],content:'',editable:true};$('#sourceEditor').value='';setMode('flow')",context);
+assert.equal(vm.runInContext("flowNodes.filter(n=>n.kind==='facts').length",context),1);
+assert.match(element('#flowPane').innerHTML,/&lt;script&gt;bad&lt;\/script&gt;/);
+assert.doesNotMatch(element('#flowPane').innerHTML,/<script>/);
+console.log('Playbook flow passed: stage order, conditional handlers, blocks, imports, loops, node details and saved-content isolation');
+vm.runInContext("selected={path:'site.yml',category:'playbooks'};asset={data:[{name:'Long play',hosts:'web',gather_facts:false,tasks:Array.from({length:8},(_,i)=>({name:'Task '+i,debug:{msg:i}}))}],content:'',editable:true};$('#sourceEditor').value='';flowGroupStates.clear();flowSelected=-1;setMode('flow')",context);
+assert.match(element('#flowPane').innerHTML,/<details[^>]*data-flow-group="0"[^>]*>/);
+assert.doesNotMatch(element('#flowPane').innerHTML,/<details[^>]*data-flow-group="0"[^>]*\sopen[ >]/);
+const stageElements=[{dataset:{flowGroup:'0'},open:false}];
+element('#flowPane').querySelectorAll=()=>stageElements;
+vm.runInContext("handleFlowAction('expand')",context);
+assert.equal(stageElements[0].open,true);
+vm.runInContext('renderPlaybookFlow()',context);
+assert.match(element('#flowPane').innerHTML,/<details[^>]*data-flow-group="0"[^>]* open>/);
+vm.runInContext("handleFlowAction('collapse')",context);
+assert.equal(stageElements[0].open,false);
+vm.runInContext("handleFlowAction('inspector')",context);
+assert.match(element('#flowPane').innerHTML,/flow-no-inspector/);
+vm.runInContext("showFlowDetails(flowNodes.findIndex(n=>n.kind==='task'))",context);
+assert.equal(vm.runInContext('flowInspector',context),true);
+vm.runInContext("handleFlowAction('handlers')",context);
+assert.match(element('#flowPane').innerHTML,/flow-hide-handlers/);
+assert.match(element('#flowPane').innerHTML,/data-flow-jump="0"/);
+const viewerClasses=new Set();element('#viewer').classList={contains:c=>viewerClasses.has(c),remove:c=>viewerClasses.delete(c),toggle:c=>{if(viewerClasses.has(c)){viewerClasses.delete(c);return false}viewerClasses.add(c);return true}};
+const fullscreenButton={textContent:'',setAttribute(){}};
+element('#flowPane').querySelector=selector=>selector==='[data-flow-action=fullscreen]'?fullscreenButton:null;
+vm.runInContext("handleFlowAction('fullscreen')",context);
+assert.ok(viewerClasses.has('flow-fullscreen'));
+assert.equal(fullscreenButton.textContent,'退出全屏');
+vm.runInContext("setMode('source')",context);
+assert.equal(viewerClasses.has('flow-fullscreen'),false);
+console.log('Flow usability passed: large-stage folding, expand/collapse, inspector, handler visibility, Play navigation and fullscreen exit');
+(async()=>{
+  const requests=[];
+  context.fetch=async(url,options)=>{requests.push({url,options});return {ok:true,json:async()=>({})}};
+  await vm.runInContext("state.workspace={id:'space-a'};api('file?path=vars.yml')",context);
+  assert.equal(requests[0].url,'/api/file?path=vars.yml&workspace=space-a');
+  await vm.runInContext("api('file',{path:'vars.yml',content:'port: 80'})",context);
+  assert.equal(JSON.parse(requests[1].options.body).workspace,'space-a');
+  await vm.runInContext("state.workspace={id:'space-b'};api('runs')",context);
+  assert.equal(requests[2].url,'/api/runs?workspace=space-b');
+  console.log('Workspace requests remain explicitly scoped');
+})().catch(e=>{console.error(e);process.exitCode=1});

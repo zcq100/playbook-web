@@ -1,0 +1,6 @@
+# Configuration for {{ app_name }}
+[server]
+port = {{ http_port }}
+{% if app_name is defined %}
+name = {{ app_name }}
+{% endif %}
