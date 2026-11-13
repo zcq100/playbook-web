@@ -20,6 +20,6 @@ class ReleaseTests(unittest.TestCase):
         with patch.object(server,'root',return_value=server.BASE/'examples'):
             result,status=handler.do_GET()
         self.assertEqual(status,200)
-        self.assertEqual(result['version'],'0.1.0')
+        self.assertEqual(result['version'],Path('VERSION').read_text().strip())
 
 if __name__ == '__main__': unittest.main()

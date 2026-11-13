@@ -258,7 +258,7 @@ docker run -d --name playbook-web --init \
   -p 127.0.0.1:8765:8765 \
   -v playbook-data:/data \
   -v /path/to/ansible:/workspace/repository \
-  ghcr.io/zcq100/playbook-web:v0.1.0
+  ghcr.io/zcq100/playbook-web:v0.1.1
 ```
 
 打开页面后，将工作空间目录设为 `/workspace/repository`。容器内无法直接访问未挂载的宿主机目录。数据卷 `/data` 保存工作空间定义，仓库挂载需要可写才能通过页面保存文件。
@@ -270,8 +270,8 @@ docker run -d --name playbook-web --init \
 ### 本地构建或 Compose
 
 ```bash
-docker build -t playbook-web:v0.1.0 .
-TEST_IMAGE=playbook-web:v0.1.0 bash scripts/container-smoke.sh
+docker build -t playbook-web:v0.1.1 .
+TEST_IMAGE=playbook-web:v0.1.1 bash scripts/container-smoke.sh
 ```
 
 也可以使用 [`compose.yaml`](compose.yaml)：
@@ -293,14 +293,14 @@ ANSIBLE_REPOSITORY=/path/to/ansible docker compose up -d --build
 3. 仅对版本标签构建并发布 `linux/amd64`、`linux/arm64` 镜像到 GHCR。
 4. 确认镜像 manifest 后创建 GitHub Release。
 
-发布标签必须与 `VERSION` 一致。`v0.1.0` 对应镜像标签 `v0.1.0`、`0.1.0`、`0.1`、`latest` 和提交 SHA 标签。普通分支与 PR 只检查和构建，不推送镜像。
+发布标签必须与 `VERSION` 一致。`v0.1.1` 对应镜像标签 `v0.1.1`、`0.1.1`、`0.1`、`latest` 和提交 SHA 标签。普通分支与 PR 只检查和构建，不推送镜像。
 
 仓库必须启用 GitHub Actions，并允许工作流写入 Packages 和创建 Release；工作流使用自动提供的 `GITHUB_TOKEN`，无需在项目内保存 PAT。
 
 后续发版时，修改 `VERSION`、Compose 版本和变更记录，提交后创建同名标签：
 
 ```bash
-git tag -a v0.1.0 -m 'Release v0.1.0'
+git tag -a v0.1.1 -m 'Release v0.1.1'
 git push origin main
-git push origin v0.1.0
+git push origin v0.1.1
 ```

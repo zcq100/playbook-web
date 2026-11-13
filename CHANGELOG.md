@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.1
+
+- README 新增仓库概览、Playbook 流程图和 Tasks 任务视图截图。
+- 更新部署示例及版本标识，版本接口测试改为校验 VERSION 文件。
+
 ## v0.1.0
 
 首个可用版本。

@@ -1,10 +1,10 @@
 services:
   playbook-web:
-    image: ghcr.io/zcq100/playbook-web:${IMAGE_TAG:-v0.1.0}
+    image: ghcr.io/zcq100/playbook-web:${IMAGE_TAG:-v0.1.1}
     build:
       context: .
       args:
-        APP_VERSION: 0.1.0
+        APP_VERSION: 0.1.1
     ports:
       - "127.0.0.1:8765:8765"
     volumes:

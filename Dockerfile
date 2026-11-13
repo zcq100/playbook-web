@@ -1,6 +1,6 @@
 FROM python:3.13-slim-bookworm
 
-ARG APP_VERSION=0.1.0
+ARG APP_VERSION=0.1.1
 ARG VCS_REF=unknown
 
 LABEL org.opencontainers.image.title="Playbook UI" \
